@@ -5,6 +5,7 @@ const passport = require("passport");
 const LocalStrategy = require("passport-local").Strategy;
 const mongoose = require("mongoose");
 const Schema = mongoose.Schema;
+const bcrypt = require('bcryptjs');
 
 const mongoDb = "mongodb+srv://michelleAppiah:3zIip7KrORJbZgpb@cluster0.6ba21px.mongodb.net/?retryWrites=true&w=majority";
 mongoose.connect(mongoDb);
@@ -20,8 +21,10 @@ const User = mongoose.model(
 );
 
 const app = express();
-app.set("views", __dirname + '/views');
+app.set("views", path.join(__dirname, 'views'));
 app.set("view engine", "ejs");
+
+app.use(express.urlencoded({ extended: true })); 
 
 passport.use(
   new LocalStrategy(async (username, password, done) => {
@@ -29,14 +32,17 @@ passport.use(
       const user = await User.findOne({ username: username });
       if (!user) {
         return done(null, false, { message: "Incorrect username" });
-      };
-      if (user.password !== password) {
+      }
+
+      const match = await bcrypt.compare(password, user.password);
+      if (!match) {
         return done(null, false, { message: "Incorrect password" });
-      };
+      }
+
       return done(null, user);
     } catch(err) {
       return done(err);
-    };
+    }
   })
 );
 
@@ -56,7 +62,6 @@ passport.deserializeUser(async (id, done) => {
 app.use(session({ secret: "cats", resave: false, saveUninitialized: true }));
 app.use(passport.initialize());
 app.use(passport.session());
-app.use(express.urlencoded({ extended: false }));
 
 app.use((req, res, next) => {
   res.locals.currentUser = req.user;
@@ -66,13 +71,15 @@ app.use((req, res, next) => {
 app.get("/", (req, res) => {
   res.render("index", { user: req.user });
 });
+
 app.get("/sign-up", (req, res) => res.render("sign-up-form"));
 
 app.post("/sign-up", async (req, res, next) => {
   try {
+    const hashedPassword = await bcrypt.hash(req.body.password, 10); 
     const user = new User({
       username: req.body.username,
-      password: req.body.password
+      password: hashedPassword 
     });
     const result = await user.save();
     res.redirect("/");
@@ -97,6 +104,5 @@ app.post(
     failureRedirect: "/"
   })
 );
-
 
 app.listen(3000, () => console.log("app listening on port 3000!"));
